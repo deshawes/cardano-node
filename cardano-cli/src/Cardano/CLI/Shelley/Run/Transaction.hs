@@ -5,11 +5,14 @@ module Cardano.CLI.Shelley.Run.Transaction
   ) where
 
 import           Cardano.Prelude
-import           Cardano.Binary (FromCBOR(..))
 
 import           Cardano.Api
+
+import           Cardano.Binary (FromCBOR(..))
+
 import           Cardano.Config.Shelley.ColdKeys
                    (KeyType(..), KeyRole(..), KeyError(..), renderKeyType)
+import           Cardano.Config.Shelley.Protocol (mkNodeClientProtocolTPraos)
 import           Cardano.Config.TextView
 import           Cardano.CLI.Environment (readEnvSocketPath)
 import           Cardano.CLI.Errors (CliError(..))
@@ -17,7 +20,8 @@ import           Cardano.CLI.Errors (CliError(..))
 import           Cardano.Config.Types hiding (Update)
 
 import           Cardano.CLI.Shelley.Parsers
-import           Cardano.Config.Types (CertificateFile (..))
+import           Cardano.CLI.Shelley.Run.SingleAddressWallet
+                   (buildSingleAddressWalletTransaction)
 
 import           Control.Monad.Trans.Except (ExceptT)
 import           Control.Monad.Trans.Except.Extra
@@ -27,6 +31,9 @@ import           Control.Monad.Trans.Except.Extra
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy.Char8 as LBS
 import qualified Data.Text as Text
+
+import qualified Ouroboros.Consensus.Cardano as Consensus
+import           Ouroboros.Consensus.Node.ProtocolInfo as Consensus (pClientInfoCodecConfig)
 
 import           Shelley.Spec.Ledger.PParams (PParams)
 
@@ -42,6 +49,8 @@ runTransactionCmd cmd =
       runTxSubmit txFp network
     TxCalculateMinFee txInCount txOutCount ttl network skFiles certFiles pParamsFile ->
       runTxCalculateMinFee txInCount txOutCount ttl network skFiles certFiles pParamsFile
+    TxSingleAddrWallet sk mbTtl network txOutputFile ->
+      runSingleAddressWallet sk mbTtl network txOutputFile
 
     _ -> liftIO $ putStrLn $ "runTransactionCmd: " ++ show cmd
 
@@ -118,6 +127,26 @@ readProtocolParameters (ProtocolParamsFile fpath) = do
 readShelleyCert :: CertificateFile -> ExceptT CliError IO Certificate
 readShelleyCert (CertificateFile fp) =
   firstExceptT ShelleyCertReadError . newExceptT $ readCertificate fp
+
+runSingleAddressWallet
+  :: SigningKeyFile
+  -> Maybe SlotNo
+  -> Network
+  -> TxFile
+  -> ExceptT CliError IO ()
+runSingleAddressWallet skeyFile mbTxTtl network (TxFile outfile) = do
+  sockFp <- readEnvSocketPath
+  skey <- firstExceptT (KeyCliError . ReadSigningKeyError)
+    . newExceptT
+    $ readSigningKeyFile skeyFile
+  let codecCfg =
+          Consensus.pClientInfoCodecConfig
+        . Consensus.protocolClientInfo
+        $ mkNodeClientProtocolTPraos
+  tx <- buildSingleAddressWalletTransaction codecCfg network sockFp mbTxTtl skey
+  firstExceptT CardanoApiError
+    . newExceptT
+    $ writeTxSigned outfile tx
 
 -- TODO : This is nuts. The 'cardano-api' and 'cardano-config' packages both have functions
 -- for reading/writing keys, but they are incompatible.

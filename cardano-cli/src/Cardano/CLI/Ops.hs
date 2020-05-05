@@ -188,7 +188,6 @@ serialiseSigningKey ByronEra       (SigningKey k) = pure $ toLazyByteString (Cry
 serialiseSigningKey ShelleyEra     _              = Left $ CardanoEraNotSupported ShelleyEra
 
 
-
 -- | Perform an action that expects ProtocolInfo for Byron/PBFT,
 --   with attendant configuration.
 withRealPBFT
@@ -206,4 +205,3 @@ withRealPBFT nc action = do
 
 ncCardanoEra :: NodeConfiguration -> CardanoEra
 ncCardanoEra = cardanoEraForProtocol . ncProtocol
-

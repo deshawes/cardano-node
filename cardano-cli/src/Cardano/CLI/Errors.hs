@@ -79,6 +79,7 @@ data CliError
   | AddressDescribeError !Text
   | CliTextViewFileError !TextViewFileError
   | CliEnvVarLookup !Text
+  | SingleAddressWalletError
 
 instance Show CliError where
   show (AddressCliError e)
@@ -181,6 +182,8 @@ instance Show CliError where
     = T.unpack $ renderTextViewFileError err
   show (CliEnvVarLookup name)
     = "Lookup of environment variable " <> show name <> " failed."
+  show SingleAddressWalletError
+    = "The single-address wallet encountered an unknown error."
 
 
 data RealPBFTError
@@ -196,4 +199,3 @@ renderRealPBFTError err =
     FromProtocolError ptclInstErr -> renderProtocolInstantiationError ptclInstErr
     InvariantViolation invErr -> "Invariant violation: " <> invErr
     TransactionTypeNotHandledYet err' -> "Transaction type not handled yet: " <> err'
-
