@@ -40,8 +40,8 @@ import           Prelude (show)
 import           Cardano.Prelude hiding (show)
 
 import           Data.Aeson
-import qualified Data.IP as IP
-import qualified Data.Text as T
+import           Data.IP (IP)
+import qualified Data.Text as Text
 import           Data.Yaml (decodeFileThrow)
 import           Network.Socket (PortNumber)
 import           System.FilePath ((</>), takeDirectory)
@@ -151,9 +151,9 @@ newtype GenesisFile = GenesisFile
   deriving (Eq, Ord, IsString)
 
 instance FromJSON GenesisFile where
-  parseJSON (String genFp) = pure . GenesisFile $ T.unpack genFp
+  parseJSON (String genFp) = pure . GenesisFile $ Text.unpack genFp
   parseJSON invalid = panic $ "Parsing of GenesisFile failed due to type mismatch. "
-                           <> "Encountered: " <> (T.pack $ show invalid)
+                           <> "Encountered: " <> (Text.pack $ show invalid)
 
 -- Encompasses staking certificates, stake pool certificates,
 -- genesis delegate certificates and MIR certificates.
@@ -260,7 +260,7 @@ instance FromJSON Protocol where
                                           <> ptcl <> " failed. "
                                           <> ptcl <> " is not a valid protocol"
   parseJSON invalid  = panic $ "Parsing of Protocol failed due to type mismatch. "
-                             <> "Encountered: " <> (T.pack $ show invalid)
+                             <> "Encountered: " <> (Text.pack $ show invalid)
 
 -- TODO: migrate to Update.SoftwareVersion
 data Update = Update
@@ -295,7 +295,7 @@ instance FromJSON ViewMode where
                                           <> view <> " failed. "
                                           <> view <> " is not a valid view mode"
   parseJSON invalid = panic $ "Parsing of ViewMode failed due to type mismatch. "
-                            <> "Encountered: " <> (T.pack $ show invalid)
+                            <> "Encountered: " <> (Text.pack $ show invalid)
 
 --------------------------------------------------------------------------------
 -- Cardano Topology Related Data Structures
@@ -303,7 +303,7 @@ instance FromJSON ViewMode where
 
 -- | IPv4 address with a port number.
 data NodeAddress = NodeAddress
-  { naHostAddress :: !(Maybe NodeHostAddress)
+  { naHostAddress :: !NodeHostAddress
   , naPort :: !PortNumber
   } deriving (Eq, Ord, Show)
 
@@ -313,32 +313,35 @@ instance Condense NodeAddress where
 instance FromJSON NodeAddress where
   parseJSON = withObject "NodeAddress" $ \v -> do
     NodeAddress
-      <$> (maybe Nothing (Just . NodeHostAddress) <$> readMaybe <$> v .: "addr")
+      <$> (NodeHostAddress <$> readMaybe <$> v .: "addr")
       <*> ((fromIntegral :: Int -> PortNumber) <$> v .: "port")
 
 instance ToJSON NodeAddress where
   toJSON na =
     object
-      [ "addr" .= maybe "null" toJSON (naHostAddress na)
+      [ "addr" .= maybe "null" (String . Text.pack . show) (unNodeHostAddress $ naHostAddress na)
       , "port" .= (fromIntegral (naPort na) :: Int)
       ]
 
+-- Embedding a Maybe inside a newtype is somewhat icky but this seems to work
+-- and removing the Maybe breaks the functionality in a subtle way that is difficult
+-- to diagnose.
 newtype NodeHostAddress
-  = NodeHostAddress { unNodeHostAddress :: IP.IP }
+  = NodeHostAddress { unNodeHostAddress :: Maybe IP }
   deriving newtype Show
   deriving (Eq, Ord)
 
 instance FromJSON NodeHostAddress where
   parseJSON (String ipStr) =
-    case readMaybe $ T.unpack ipStr of
+    case readMaybe $ Text.unpack ipStr of
       Just ip -> pure $ NodeHostAddress ip
       Nothing -> panic $ "Parsing of IP failed: " <> ipStr
   parseJSON invalid = panic $ "Parsing of IP failed due to type mismatch. "
-                            <> "Encountered: " <> (T.pack $ show invalid)
+                            <> "Encountered: " <> (Text.pack $ show invalid)
 
 instance ToJSON NodeHostAddress where
   toJSON mha =
-    String (T.pack . show $ unNodeHostAddress mha)
+    String (Text.pack . show $ unNodeHostAddress mha)
 
 --------------------------------------------------------------------------------
 -- Protocol & Tracing Related
