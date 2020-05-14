@@ -5,7 +5,6 @@ module Cardano.CLI.Shelley.Run.TextView
 import           Cardano.Prelude
 
 import           Cardano.CLI.Errors (CliError(..))
-import           Cardano.CLI.Ops (pPrintCBOR)
 import           Cardano.CLI.Shelley.Parsers
 
 import           Cardano.Config.TextView

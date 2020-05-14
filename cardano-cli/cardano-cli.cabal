@@ -23,11 +23,11 @@ library
   hs-source-dirs:      src
 
   exposed-modules:     Cardano.CLI.Commands
+                       Cardano.CLI.Helpers
                        Cardano.CLI.Parsers
                        Cardano.CLI.Run
                        Cardano.CLI.Errors
 
-                       Cardano.CLI.Era
                        Cardano.CLI.Environment
                        Cardano.CLI.Ops
 
@@ -132,6 +132,7 @@ executable cardano-cli
                      , cardano-config
                      , cardano-prelude
                      , optparse-applicative
+                     , text
                      , transformers-except
 
   default-extensions:  NoImplicitPrelude

@@ -5,10 +5,10 @@ module Cardano.CLI.Shelley.Run.Query
 import           Cardano.Prelude
 
 import           Cardano.Api
-                   (Address, Network(..), getLocalTip, queryFilteredUTxOFromLocalState,
+                   (Address, LocalStateQueryError, Network(..), getLocalTip, queryFilteredUTxOFromLocalState,
                     queryPParamsFromLocalState)
 
-import           Cardano.CLI.Environment (readEnvSocketPath)
+import           Cardano.CLI.Environment (EnvSocketError, readEnvSocketPath)
 import           Cardano.CLI.Errors (CliError(..))
 import           Cardano.CLI.Shelley.Parsers (OutputFile (..), QueryCmd (..))
 
@@ -36,8 +36,13 @@ import           Shelley.Spec.Ledger.PParams (PParams)
 import           Shelley.Spec.Ledger.TxData (TxId (..), TxIn (..), TxOut (..))
 import           Shelley.Spec.Ledger.UTxO (UTxO (..))
 
+data ShelleyQueryError
+  = ShelleyQueryEnvVarSocketErr !EnvSocketError
+  | NodeLocalStateQueryError !LocalStateQueryError
+  deriving Show
 
-runQueryCmd :: QueryCmd -> ExceptT CliError IO ()
+
+runQueryCmd :: QueryCmd -> ExceptT ShelleyQueryError IO ()
 runQueryCmd cmd =
   case cmd of
     QueryProtocolParameters network mOutFile ->
@@ -51,9 +56,9 @@ runQueryCmd cmd =
 runQueryProtocolParameters
   :: Network
   -> Maybe OutputFile
-  -> ExceptT CliError IO ()
+  -> ExceptT ShelleyQueryError IO ()
 runQueryProtocolParameters network mOutFile = do
-  sockPath <- readEnvSocketPath
+  sockPath <- firstExceptT ShelleyQueryEnvVarSocketErr readEnvSocketPath
   let ptclClientInfo = pClientInfoCodecConfig . protocolClientInfo $ mkNodeClientProtocolTPraos
   tip <- liftIO $ withIOManager $ \iomgr ->
     getLocalTip iomgr ptclClientInfo network sockPath
@@ -63,7 +68,7 @@ runQueryProtocolParameters network mOutFile = do
 
 runQueryTip
   :: Network
-  -> ExceptT CliError IO ()
+  -> ExceptT ShelleyQueryError IO ()
 runQueryTip network = do
   sockPath <- readEnvSocketPath
   let ptclClientInfo = pClientInfoCodecConfig . protocolClientInfo $ mkNodeClientProtocolTPraos
@@ -75,7 +80,7 @@ runQueryFilteredUTxO
   :: Address
   -> Network
   -> Maybe OutputFile
-  -> ExceptT CliError IO ()
+  -> ExceptT ShelleyQueryError IO ()
 runQueryFilteredUTxO addr network mOutFile = do
   sockPath <- readEnvSocketPath
   let ptclClientInfo = pClientInfoCodecConfig . protocolClientInfo $ mkNodeClientProtocolTPraos

@@ -1,12 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import           Cardano.Prelude hiding (option)
-import           Prelude (String)
 
-import           Control.Monad.Trans.Except.Extra (runExceptT)
+import           Control.Monad.Trans.Except.Exit (orDie)
+import qualified Data.Text as Text
 import qualified Options.Applicative as Opt
 import           Options.Applicative (ParserInfo, ParserPrefs, showHelpOnEmpty)
-import           System.Exit (exitFailure)
 
 import           Cardano.CLI.Errors
 import           Cardano.CLI.Parsers (ClientCommand, parseClientCommand)
@@ -19,12 +18,8 @@ main = toplevelExceptionHandler $ do
 
   co <- Opt.customExecParser pref opts
 
-  cmdRes <- runExceptT $ runClientCommand co
+  orDie renderCliError $ runClientCommand co
 
-  case cmdRes of
-    Right _ -> pure ()
-    Left err -> do putStrLn $ renderCliError err
-                   exitFailure
   where
     pref :: ParserPrefs
     pref = Opt.prefs showHelpOnEmpty
@@ -39,6 +34,5 @@ main = toplevelExceptionHandler $ do
           \ pretty-printing..) for different system generations."
         )
 
-    renderCliError :: CliError -> String
-    renderCliError = show
-
+    renderCliError :: CliError -> Text
+    renderCliError = Text.pack . show

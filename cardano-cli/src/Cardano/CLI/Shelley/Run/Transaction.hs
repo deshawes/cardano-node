@@ -31,6 +31,9 @@ import qualified Data.Text as Text
 import           Shelley.Spec.Ledger.PParams (PParams)
 
 
+data RunShelleyError
+  = RunShelleySocketEnvError !EnvSocketError
+
 runTransactionCmd :: TransactionCmd -> ExceptT CliError IO ()
 runTransactionCmd cmd =
   case cmd of
@@ -75,9 +78,9 @@ runTxSign (TxBodyFile infile) skfiles  network (TxFile outfile) = do
       . writeTxSigned outfile
       $ signTransaction txu network sks
 
-runTxSubmit :: FilePath -> Network -> ExceptT CliError IO ()
+runTxSubmit :: FilePath -> Network -> ExceptT RunShelleyError IO ()
 runTxSubmit txFp network = do
-  sktFp <- readEnvSocketPath
+  sktFp <- firstExceptT RunShelleySocketEnvError $ readEnvSocketPath
   signedTx <- firstExceptT CardanoApiError . newExceptT $ readTxSigned txFp
   result   <- liftIO $ submitTx network sktFp signedTx
   case result of
