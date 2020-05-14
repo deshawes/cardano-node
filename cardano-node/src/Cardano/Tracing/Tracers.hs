@@ -30,7 +30,7 @@ import           Control.Tracer
 
 import           Codec.CBOR.Read (DeserialiseFailure)
 import           Data.Functor.Contravariant (contramap)
-import           Data.IORef (IORef, atomicModifyIORef')
+import           Data.IORef (IORef, atomicModifyIORef', readIORef)
 import           Data.Text (Text, pack)
 import           Network.Mux (MuxTrace, WithMuxBearer)
 import qualified Network.Socket as Socket (SockAddr)
@@ -232,10 +232,13 @@ instance (StandardHash header, Eq peer) => ElidingTracer
 data BlockchainCounters = BlockchainCounters
   { bcTxsProcessedNum :: !Word64
   , bcBlocksForgedNum :: !Word64
+  , bcNodeIsLeaderNum :: !Word64
+  , bcSlotsMissedNum  :: !Word64
+  , bcForksCreatedNum :: !Word64
   }
 
 initialBlockchainCounters :: BlockchainCounters
-initialBlockchainCounters = BlockchainCounters 0 0
+initialBlockchainCounters = BlockchainCounters 0 0 0 0 0
 
 -- | Smart constructor of 'NodeTraces'.
 --
@@ -343,6 +346,7 @@ mkTracers traceConf tracer bcCounters = do
                      -> Tracer IO (WithSeverity (ChainDB.TraceEvent blk))
     teeTraceChainTip tverb elided tr = Tracer $ \ev -> do
         traceWith (teeTraceChainTip' tr) ev
+        traceWith (notifyForkIsCreated) ev
         traceWith (teeTraceChainTipElide tverb elided tr) ev
     teeTraceChainTipElide :: TracingVerbosity
                           -> MVar (Maybe (WithSeverity (ChainDB.TraceEvent blk)), Integer)
@@ -378,6 +382,21 @@ mkTracers traceConf tracer bcCounters = do
               (ChainDB.TraceAddBlockEvent ev) -> case ev of
                   ChainDB.SwitchedToAFork     _ _ c -> traceChainInformation tr (chainInformation c)
                   ChainDB.AddedToCurrentChain _ _ c -> traceChainInformation tr (chainInformation c)
+                  _ -> pure ()
+              _ -> pure ()
+
+    notifyForkIsCreated :: Tracer IO (WithSeverity (ChainDB.TraceEvent blk))
+    notifyForkIsCreated =
+        Tracer $ \(WithSeverity _ ev') ->
+          case ev' of
+              (ChainDB.TraceAddBlockEvent ev) -> case ev of
+                  ChainDB.SwitchedToAFork _ _ _ -> do
+                      newCounter <- atomicModifyIORef' bcCounters $ \counters ->
+                          let nc = bcForksCreatedNum counters + 1
+                          in (counters { bcForksCreatedNum = nc }, nc)
+                      meta <- mkLOMeta Notice Public
+                      traceNamedObject (appendName "metrics" tracer)
+                                       (meta, LogValue "forksCreatedNum" (PureI $ fromIntegral newCounter))
                   _ -> pure ()
               _ -> pure ()
 
@@ -462,6 +481,7 @@ mkTracers traceConf tracer bcCounters = do
     forgeTracer forgeTracers tc = Tracer $ \ev -> do
         traceWith (measureTxsEnd tracer) ev
         traceWith (notifyBlockForging) ev
+        traceWith (notifySlotsMissedIfNeeded) ev
         traceWith (consensusForgeTracer) ev
       where
         -- The consensus tracer.
@@ -478,6 +498,30 @@ mkTracers traceConf tracer bcCounters = do
             meta <- mkLOMeta Notice Public
             traceNamedObject (appendName "metrics" tracer)
                              (meta, LogValue "blocksForgedNum" (PureI $ fromIntegral newCounter))
+          -- The rest of the constructors.
+          _ -> pure ()
+
+        notifySlotsMissedIfNeeded = Tracer $ \case
+          Consensus.TraceNodeIsLeader _ ->
+            void $ atomicModifyIORef' bcCounters $ \counters ->
+              let nc = bcNodeIsLeaderNum counters + 1
+              in (counters { bcNodeIsLeaderNum = nc }, nc)
+          Consensus.TraceNodeNotLeader _ -> do
+            -- Not is not a leader again, so now the number of blocks forged by this node
+            -- should be equal to the number of slots when this node was a leader.
+            counters <- readIORef bcCounters
+            let howManyBlocksWereForged = bcBlocksForgedNum counters
+                timesNodeWasALeader = bcNodeIsLeaderNum counters
+                numberOfMissedSlots = timesNodeWasALeader - howManyBlocksWereForged
+            when (numberOfMissedSlots > 0) $ do
+              -- Node was a leader more times than the number of forged blocks,
+              -- it means that some slots were missed.
+              newCounter <- atomicModifyIORef' bcCounters $ \counters' ->
+                let nc = bcSlotsMissedNum counters' + numberOfMissedSlots
+                in (counters { bcSlotsMissedNum = nc }, nc)
+              meta <- mkLOMeta Notice Public
+              traceNamedObject (appendName "metrics" tracer)
+                               (meta, LogValue "slotsMissedNum" (PureI $ fromIntegral newCounter))
           -- The rest of the constructors.
           _ -> pure ()
 
