@@ -54,6 +54,7 @@ library
                      , network-mux
                      , optparse-applicative
                      , ouroboros-consensus
+                     , ouroboros-consensus-shelley
                      , ouroboros-consensus-cardano
                      , ouroboros-network
                      , process

@@ -149,7 +149,7 @@ runNode loggingLayer npm@NodeCLI{protocolFiles} = do
         be :: LiveViewBackend blk Text <- realize c
         let lvbe = MkBackend { bEffectuate = effectuate be, bUnrealize = unrealize be }
         llAddBackend loggingLayer lvbe (UserDefinedBK "LiveViewBackend")
-        setTopology be npm
+        liveViewPostSetup be npm nc
         captureCounters be trace
 
         -- User will see a terminal graphics and will be able to interact with it.
